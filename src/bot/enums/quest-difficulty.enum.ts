@@ -1,5 +1,6 @@
 export enum QuestDifficulty {
-  EASY,
-  MEDIUM,
-  HARD,
+  EASY = 'EASY',
+  MEDIUM = 'MEDIUM',
+  HARD = 'HARD',
+  EPIC = 'EPIC',
 }

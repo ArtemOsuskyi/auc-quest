@@ -1,6 +1,6 @@
 import { Command } from '@discord-nestjs/core';
-import { QuestCreateSubCommand } from './quest-create.sub-command';
 import { QuestClaimSubCommand } from './quest-claim.sub-command';
+import { QuestCreateSubCommand } from './quest-create.sub-command';
 
 @Command({
   name: 'quest',

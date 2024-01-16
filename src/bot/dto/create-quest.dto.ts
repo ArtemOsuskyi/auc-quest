@@ -15,14 +15,15 @@ export class CreateQuestDto {
     name: 'difficulty',
     description: 'Quest difficulty',
     required: true,
-    type: ParamType.INTEGER,
+    type: ParamType.STRING,
   })
   difficulty: QuestDifficulty;
 
   @Param({
     name: 'description',
-    description: 'Quest brief description (what skillsets a map is testing)',
-    required: false,
+    description:
+      'Quest brief description (what skillsets a map is testing)',
+    required: true,
     type: ParamType.STRING,
   })
   description: string;
@@ -37,7 +38,8 @@ export class CreateQuestDto {
 
   @Param({
     name: 'allow_hd',
-    description: 'Allows to use HD with HR/DT/EZ, if HD was not chosen',
+    description:
+      'Allows to use HD with HR/DT/EZ, if HD was not chosen',
     required: false,
     type: ParamType.BOOLEAN,
   })
