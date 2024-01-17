@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PrismaModule } from 'nestjs-prisma';
 
 import { DiscordModule } from '@discord-nestjs/core';
 import { OsuModule } from '../osu/osu.module';
@@ -8,7 +9,7 @@ import { QuestCreateSubCommand } from './commands/quest/quest-create.sub-command
 import { BotGateway } from './bot.gateway';
 
 @Module({
-  imports: [DiscordModule.forFeature(), OsuModule],
+  imports: [DiscordModule.forFeature(), OsuModule, PrismaModule],
   providers: [
     QuestCommand,
     QuestCreateSubCommand,

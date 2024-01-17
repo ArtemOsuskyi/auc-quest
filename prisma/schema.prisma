@@ -1,0 +1,47 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuestDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  EPIC
+  MYTHICAL
+}
+
+model Quest {
+  id           Int             @id @default(autoincrement())
+  thread_id    String
+  beatmap_id   Int
+  description  String
+  difficulty   QuestDifficulty
+  mods         String?
+  allow_hd     Boolean?
+  accuracy     Decimal?        @db.Decimal()
+  misses       Int?
+  combo        Int?
+  score_amount Int?
+  ur           Int?
+  created_at   DateTime        @default(now()) @map("created_at")
+  QuestClaims  QuestClaims[]
+}
+
+model QuestClaims {
+  id       Int    @id @default(autoincrement())
+  username String
+  quest    Quest  @relation(references: [id], fields: [questId])
+  questId  Int
+}
+
+model Users {
+  id          Int    @id @default(autoincrement())
+  discordId   Int
+  osuUsername String
+}

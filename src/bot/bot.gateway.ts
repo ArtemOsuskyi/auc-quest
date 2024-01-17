@@ -10,24 +10,28 @@ import {
   TextChannel,
   ThreadAutoArchiveDuration,
 } from 'discord.js';
-import { isNil } from 'lodash';
+import { isNil, omit } from 'lodash';
+import { PrismaService } from 'nestjs-prisma';
 
 import { On } from '@discord-nestjs/core';
+import { CreateQuestDto } from '@src/bot/dto/create-quest.dto';
 
 @Injectable()
 export class BotGateway {
+  constructor(private readonly prismaService: PrismaService) {}
   @On('interactionCreate')
   public async interaction(interaction: Interaction) {
     if (!interaction.isCommand()) return;
 
     const commandName = interaction.options.data[0].name;
 
-    commandName === 'create'
-      ? await this.handleQuestCreate(interaction)
-      : await this.handleQuestClaim(interaction);
+    if (commandName === 'create')
+      await this.handleQuestCreate(interaction);
   }
 
   private async handleQuestCreate(interaction: Interaction) {
+    if (!interaction.isCommand()) return;
+
     const confirm = new ButtonBuilder()
       .setCustomId('confirm')
       .setLabel('Надіслати')
@@ -43,15 +47,17 @@ export class BotGateway {
       cancel,
     );
 
-    await this.delay(1000);
+    await this.delay(2000);
 
     const embedMessage = await interaction.channel.messages
       .fetch({
-        limit: 2,
+        limit: 1,
       } as FetchMessagesOptions)
-      .then((messages) =>
-        messages.find((message) => message.embeds.length !== 0),
-      );
+      .then((messages) => {
+        return messages.find(
+          (message) => message.embeds.length !== 0,
+        );
+      });
 
     if (isNil(embedMessage)) return;
 
@@ -68,6 +74,12 @@ export class BotGateway {
         });
 
       if (confirmation.customId === 'confirm') {
+        const questOptions =
+          interaction.options.data[0].options.reduce((acc, curr) => {
+            acc[curr.name] = curr.value;
+            return acc;
+          }, {} as CreateQuestDto);
+
         const embed = embedMessage.embeds[0];
 
         const questChannel = interaction.guild.channels.cache.get(
@@ -78,7 +90,11 @@ export class BotGateway {
           content: 'Квест надіслано!',
           components: [],
         });
-        return await this.submitQuest(embed, questChannel);
+        return await this.submitQuest(
+          embed,
+          questChannel,
+          questOptions,
+        );
       } else
         await confirmation.update({
           content: 'Надіслання скасовано!',
@@ -94,7 +110,11 @@ export class BotGateway {
     }
   }
 
-  private async submitQuest(embed: Embed, questChannel: TextChannel) {
+  private async submitQuest(
+    embed: Embed,
+    questChannel: TextChannel,
+    createQuestDto: CreateQuestDto,
+  ) {
     await questChannel
       .send({
         embeds: [embed],
@@ -102,17 +122,19 @@ export class BotGateway {
       .then(async (message) => {
         const thread = await message.startThread({
           name: embed.data.title,
-          autoArchiveDuration: 2880 as ThreadAutoArchiveDuration,
+          autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
         });
-        thread.send({
+        await this.prismaService.quest.create({
+          data: {
+            ...omit(createQuestDto, 'screenshot'),
+            thread_id: thread.id,
+          },
+        });
+        await thread.send({
           content:
             'Скористайтесь командою /quest claim, щоб відмітити виконання квесту',
         });
       });
-  }
-
-  private async handleQuestClaim(interaction: Interaction) {
-    if (!interaction.channel.isThread()) return;
   }
 
   private delay = (delayInms: number) => {

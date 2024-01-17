@@ -1,3 +1,5 @@
+import { Attachment } from 'discord.js';
+
 import { Choice, Param, ParamType } from '@discord-nestjs/core';
 import { QuestDifficulty } from '../enums/quest-difficulty.enum';
 
@@ -8,7 +10,7 @@ export class CreateQuestDto {
     required: true,
     type: ParamType.INTEGER,
   })
-  beatmapId: number;
+  beatmap_id: number;
 
   @Choice(QuestDifficulty)
   @Param({
@@ -29,6 +31,14 @@ export class CreateQuestDto {
   description: string;
 
   @Param({
+    name: 'screenshot',
+    description: 'Screenshot',
+    required: true,
+    type: ParamType.ATTACHMENT,
+  })
+  screenshot: Attachment;
+
+  @Param({
     name: 'mods',
     description: 'Required mods for quest',
     required: false,
@@ -43,7 +53,7 @@ export class CreateQuestDto {
     required: false,
     type: ParamType.BOOLEAN,
   })
-  allowHD: boolean;
+  allow_hd: boolean;
 
   @Param({
     name: 'accuracy',
