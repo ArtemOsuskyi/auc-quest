@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import dayjs from 'dayjs';
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -9,24 +10,35 @@ import {
   MessageReplyOptions,
   TextChannel,
   ThreadAutoArchiveDuration,
+  ThreadChannel,
+  time,
 } from 'discord.js';
 import { isNil, omit } from 'lodash';
 import { PrismaService } from 'nestjs-prisma';
 
 import { On } from '@discord-nestjs/core';
 import { CreateQuestDto } from '@src/bot/dto/create-quest.dto';
+import { maxQuestClaimsMap } from '@src/replay/consts/max-quest-claims.map';
 
 @Injectable()
 export class BotGateway {
   constructor(private readonly prismaService: PrismaService) {}
+
   @On('interactionCreate')
   public async interaction(interaction: Interaction) {
     if (!interaction.isCommand()) return;
 
     const commandName = interaction.options.data[0].name;
 
-    if (commandName === 'create')
-      await this.handleQuestCreate(interaction);
+    switch (commandName) {
+      case 'create': {
+        return await this.handleQuestCreate(interaction);
+      }
+
+      case 'claim': {
+        return await this.handleQuestClaim(interaction);
+      }
+    }
   }
 
   private async handleQuestCreate(interaction: Interaction) {
@@ -110,6 +122,51 @@ export class BotGateway {
     }
   }
 
+  private async handleQuestClaim(interaction: Interaction) {
+    if (!interaction.isCommand()) return;
+
+    const quest = await this.prismaService.quest.findFirst({
+      where: {
+        thread_id: interaction.channel.id,
+      },
+    });
+
+    if (
+      dayjs(quest.created_at)
+        .add(48, 'hours')
+        .isAfter(interaction.createdAt)
+    ) {
+      return {};
+    }
+
+    const questClaimsDone =
+      await this.prismaService.questClaims.count({
+        where: {
+          questId: quest.id,
+        },
+      });
+
+    if (questClaimsDone === maxQuestClaimsMap.get(quest.difficulty)) {
+      return 'Кількість виконань цього квесту вичерпано!';
+    }
+
+    const remainingClaims =
+      maxQuestClaimsMap.get(quest.difficulty) - questClaimsDone - 1;
+
+    await interaction.reply({
+      content: `<@${interaction.member.user.id}> виконав квест! Залишилось виконань: ${remainingClaims}`,
+    });
+    if (remainingClaims === 0) {
+      await interaction.followUp({
+        content: 'Квота виконань вичерпана, дякуємо за участь!',
+      });
+      const thread = interaction.guild.channels.cache.find(
+        (channel) => channel.id === interaction.channel.id,
+      ) as ThreadChannel;
+      await thread.setLocked(true);
+    }
+  }
+
   private async submitQuest(
     embed: Embed,
     questChannel: TextChannel,
@@ -124,15 +181,18 @@ export class BotGateway {
           name: embed.data.title,
           autoArchiveDuration: ThreadAutoArchiveDuration.ThreeDays,
         });
-        await this.prismaService.quest.create({
+        const quest = await this.prismaService.quest.create({
           data: {
             ...omit(createQuestDto, 'screenshot'),
             thread_id: thread.id,
           },
         });
+        const timeUntillQuestLock = time(
+          dayjs(quest.created_at).add(48, 'hours').toDate(),
+          'R',
+        );
         await thread.send({
-          content:
-            'Скористайтесь командою /quest claim, щоб відмітити виконання квесту',
+          content: `Скористайтесь командою /quest claim, щоб відмітити виконання квесту. До закриття квесту залишилось ${timeUntillQuestLock}`,
         });
       });
   }

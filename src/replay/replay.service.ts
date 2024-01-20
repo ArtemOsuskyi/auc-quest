@@ -16,7 +16,6 @@ import {
   conditionsKeysSet,
   extractKeys,
 } from '@src/replay/consts/conditions-keys-map.const';
-import { maxQuestClaimsMap } from '@src/replay/consts/max-quest-claims.map';
 import { unfulfilledConditionsMap } from '@src/replay/consts/unfulfilled-conditions-map.const';
 
 @Injectable()
@@ -84,22 +83,12 @@ export class ReplayService {
       };
     }
 
-    await this.prismaService.questClaims.create({
+    return this.prismaService.questClaims.create({
       data: {
         questId: quest.id,
         userId: user.id,
       },
     });
-
-    const currentClaims = await this.prismaService.questClaims.count({
-      where: {
-        questId: quest.id,
-      },
-    });
-
-    return {
-      content: `<@${user.discordId}> виконав квест! Залишилось виконань: ${maxQuestClaimsMap.get(quest.difficulty) - currentClaims} `,
-    };
   }
 
   private handleConditions(
@@ -141,7 +130,6 @@ export class ReplayService {
       }
 
       case 'created_at': {
-        return true;
         return dayjs(quest.created_at).isBefore(replay.timestamp);
       }
     }

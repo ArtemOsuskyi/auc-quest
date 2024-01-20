@@ -9,7 +9,6 @@ import { Handler, IA, MSG, SubCommand } from '@discord-nestjs/core';
 import { Replay } from '@minhducsun2002/node-osr-parser';
 import { QuestDifficulty } from '@prisma/client';
 import { ClaimQuestDto } from '@src/bot/dto/claim-quest.dto';
-import { maxQuestClaimsMap } from '@src/replay/consts/max-quest-claims.map';
 import { ReplayService } from '@src/replay/replay.service';
 
 @SubCommand({ name: 'claim', description: 'Claim quest' })
@@ -65,19 +64,6 @@ export class QuestClaimSubCommand {
         content: 'Ви вже виконали цей квест!',
         ephemeral: true,
       };
-    }
-
-    const checkQuestClaims =
-      await this.prismaService.questClaims.count({
-        where: {
-          questId: quest.id,
-        },
-      });
-
-    if (
-      checkQuestClaims === maxQuestClaimsMap.get(quest.difficulty)
-    ) {
-      return 'Кількість виконань цього квесту вичерпано!';
     }
 
     if (!this.checkValidAttachment(claimQuestDto.replay)) {
