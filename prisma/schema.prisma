@@ -23,7 +23,7 @@ model Quest {
   description  String
   difficulty   QuestDifficulty
   mods         String?
-  allow_hd     Boolean?
+  allow_hd     Boolean?        @default(false)
   accuracy     Decimal?        @db.Decimal()
   misses       Int?
   combo        Int?
@@ -34,14 +34,18 @@ model Quest {
 }
 
 model QuestClaims {
-  id       Int    @id @default(autoincrement())
-  username String
-  quest    Quest  @relation(references: [id], fields: [questId])
-  questId  Int
+  id      Int   @id @default(autoincrement())
+  user    Users @relation(references: [id], fields: [userId])
+  userId  Int
+  quest   Quest @relation(references: [id], fields: [questId])
+  questId Int
 }
 
 model Users {
-  id          Int    @id @default(autoincrement())
-  discordId   Int
+  id          Int           @id @default(autoincrement())
+  discordId   String
   osuUsername String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  QuestClaims QuestClaims[]
 }

@@ -1,26 +1,25 @@
 import dayjs from 'dayjs';
-import { Attachment, Message } from 'discord.js';
-import { writeFile } from 'fs/promises';
+import { Attachment, Message, time } from 'discord.js';
 import { isNil } from 'lodash';
 import { PrismaService } from 'nestjs-prisma';
-import { readFileSync } from 'node:fs';
 import fetch from 'node-fetch';
 
 import { SlashCommandPipe } from '@discord-nestjs/common';
 import { Handler, IA, MSG, SubCommand } from '@discord-nestjs/core';
 import { Replay } from '@minhducsun2002/node-osr-parser';
-import { Quest } from '@prisma/client';
+import { QuestDifficulty } from '@prisma/client';
 import { ClaimQuestDto } from '@src/bot/dto/claim-quest.dto';
+import { maxQuestClaimsMap } from '@src/replay/consts/max-quest-claims.map';
+import { ReplayService } from '@src/replay/replay.service';
 
 @SubCommand({ name: 'claim', description: 'Claim quest' })
 export class QuestClaimSubCommand {
   private readonly detsadovecRoleId = '1197277406659088425';
   private readonly scholarRoleId = '1197277443397013504';
-  private readonly cantClaimQuestMessage = {
-    content: 'Ви поки не можете виконати квест',
-    ephemeral: true,
-  };
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly replayService: ReplayService,
+  ) {}
   @Handler()
   public async questClaim(
     @IA(SlashCommandPipe) claimQuestDto: ClaimQuestDto,
@@ -32,14 +31,19 @@ export class QuestClaimSubCommand {
         ephemeral: true,
       };
 
-    if (!this.checkValidAttachment(claimQuestDto.replay)) {
+    const user = await this.prismaService.users.findFirst({
+      where: {
+        discordId: `${message.member.id}`,
+      },
+    });
+
+    if (isNil(user)) {
       return {
-        content: 'Надісланий файл не є реплеєм!',
+        content:
+          'Щоб мати можливість виконати квести, необхідно авторізуватись за допомогою команди /quest authorize',
         ephemeral: true,
       };
     }
-
-    console.log(message.channelId);
 
     const quest = await this.prismaService.quest.findFirst({
       where: {
@@ -47,70 +51,90 @@ export class QuestClaimSubCommand {
       },
     });
 
-    const easyQuestHandle = await this.handleEasyQuest(
-      quest,
-      message,
+    const questClaim = await this.prismaService.questClaims.findFirst(
+      {
+        where: {
+          userId: user.id,
+          questId: quest.id,
+        },
+      },
     );
-    if (!isNil(easyQuestHandle) && !easyQuestHandle) {
-      return this.cantClaimQuestMessage;
+
+    if (!isNil(questClaim)) {
+      return {
+        content: 'Ви вже виконали цей квест!',
+        ephemeral: true,
+      };
     }
-    const mediumQuestHandle = await this.handleMediumQuest(
-      quest,
-      message,
+
+    const checkQuestClaims =
+      await this.prismaService.questClaims.count({
+        where: {
+          questId: quest.id,
+        },
+      });
+
+    if (
+      checkQuestClaims === maxQuestClaimsMap.get(quest.difficulty)
+    ) {
+      return 'Кількість виконань цього квесту вичерпано!';
+    }
+
+    if (!this.checkValidAttachment(claimQuestDto.replay)) {
+      return {
+        content: 'Надісланий файл не є реплеєм!',
+        ephemeral: true,
+      };
+    }
+
+    const timeUntilQuestClaim = time(
+      dayjs(quest.created_at).add(6, 'hours').toDate(),
+      'R',
     );
-    if (!isNil(mediumQuestHandle) && !mediumQuestHandle) {
-      return this.cantClaimQuestMessage;
+
+    const cantClaimQuestMessage = {
+      content: `Ви можете виконати квест ${timeUntilQuestClaim}`,
+      ephemeral: true,
+    };
+
+    if (
+      quest.difficulty === 'EASY' ||
+      quest.difficulty === 'MEDIUM'
+    ) {
+      const canClaimQuest = await this.handleEasyMediumQuest(
+        quest.difficulty,
+        message,
+      );
+
+      if (!canClaimQuest) return cantClaimQuestMessage;
     }
 
-    const filename = await this.download(claimQuestDto.replay.url);
+    const buffer = await this.download(claimQuestDto.replay.url);
 
-    const replayBuffer: Buffer = readFileSync(filename);
+    const replay = await new Replay(buffer).deserialize();
 
-    const replay = await new Replay(replayBuffer).deserialize();
-
-    return replay.player;
+    return await this.replayService
+      .validateReplaySubmit(replay, quest, user)
+      .then((result) => {
+        return result;
+      });
   }
 
-  private async download(url: string) {
+  private async download(url: string): Promise<Buffer> {
     const response = await fetch(url);
-    const fileName = this.getReplayFileName(url);
     if (response.ok && response.body) {
-      const buffer = await response.buffer();
-      await writeFile(fileName, buffer);
-      return fileName;
+      return await response.buffer();
     }
-    return 'Щось пійшло не так при завантаженні реплею!';
-  }
-
-  private getReplayFileName(url: string) {
-    return url.split('/').at(-1).split('?')[0];
   }
 
   private checkValidAttachment(replay: Attachment) {
     return replay.name.slice(-3) === 'osr';
   }
 
-  private async handleEasyQuest(quest: Quest, message: Message) {
-    if (quest.difficulty !== 'EASY') return;
-
-    const hoursDiff = dayjs(message.createdAt).diff(dayjs(), 'hours');
-
-    const role = await message.guild.roles.fetch(
-      this.detsadovecRoleId,
-    );
-
-    if (
-      role.members.find((member) => message.member.id === member.id)
-    )
-      return true;
-    else if (hoursDiff !== 2) {
-      return false;
-    }
-  }
-
-  private async handleMediumQuest(quest: Quest, message: Message) {
-    if (quest.difficulty !== 'MEDIUM') return;
-
+  private async handleEasyMediumQuest(
+    difficulty: QuestDifficulty,
+    message: Message,
+  ) {
     const hoursDiff = dayjs(message.createdAt).diff(dayjs(), 'hours');
 
     const detsadovecRole = await message.guild.roles.fetch(
@@ -121,17 +145,37 @@ export class QuestClaimSubCommand {
       this.scholarRoleId,
     );
 
-    if (
-      detsadovecRole.members.find(
-        (member) => message.member.id === member.id,
-      ) ||
-      scholarRole.members.find(
-        (member) => message.member.id === member.id,
-      )
-    )
-      return true;
-    else if (hoursDiff !== 2) {
-      return false;
+    switch (difficulty) {
+      case QuestDifficulty.EASY: {
+        if (
+          detsadovecRole.members.find(
+            (member) => message.member.id === member.id,
+          )
+        ) {
+          return true;
+        } else if (hoursDiff !== 6) {
+          return false;
+        }
+
+        break;
+      }
+
+      case QuestDifficulty.MEDIUM: {
+        if (
+          detsadovecRole.members.find(
+            (member) => message.member.id === member.id,
+          ) ||
+          scholarRole.members.find(
+            (member) => message.member.id === member.id,
+          )
+        ) {
+          return true;
+        } else if (hoursDiff !== 6) {
+          return false;
+        }
+
+        break;
+      }
     }
   }
 }

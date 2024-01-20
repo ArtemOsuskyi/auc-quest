@@ -8,10 +8,12 @@ import { DiscordModule } from '@discord-nestjs/core';
 import { neonConfig, Pool } from '@neondatabase/serverless';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import { BotModule } from './bot/bot.module';
+import { ReplayModule } from './replay/replay.module';
 
 @Module({
   imports: [
     PrismaModule.forRootAsync({
+      isGlobal: true,
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
@@ -49,6 +51,7 @@ import { BotModule } from './bot/bot.module';
       },
     }),
     BotModule,
+    ReplayModule,
   ],
 })
 export class AppModule {}
